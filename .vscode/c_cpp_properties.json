@@ -1,0 +1,17 @@
+{
+  "configurations": [
+    {
+      "name": "Daisy",
+      "compilerPath": "arm-none-eabi-g++",
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "defines": ["USE_HAL_DRIVER", "STM32H750xx"],
+      "includePath": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/lib/libDaisy/**",
+        "${workspaceFolder}/lib/DaisySP/**"
+      ]
+    }
+  ],
+  "version": 4
+}
