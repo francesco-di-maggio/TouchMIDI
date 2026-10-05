@@ -14,14 +14,16 @@ namespace synthux {
  */
 class Knobs {
 public:
+    static constexpr size_t kNumKnobs = 8;
+
     // update_rate: Process() calls per second, slew: smoothing time in seconds
     void Init(daisy::DaisySeed& hw, float update_rate, float slew = 0.02f);
     void Process();
 
     // Index-based access (0 to 7)
-    float operator[](size_t index) const { return (index < 8) ? _values[index] : 0.0f; }
-    float Value(size_t index) const { return (index < 8) ? _values[index] : 0.0f; }
-    const std::array<float, 8>& Values() const { return _values; }
+    float operator[](size_t index) const { return (index < kNumKnobs) ? _values[index] : 0.0f; }
+    float Value(size_t index) const { return (index < kNumKnobs) ? _values[index] : 0.0f; }
+    const std::array<float, kNumKnobs>& Values() const { return _values; }
 
     // Named accessors for 6 rotary knobs (S30–S35)
     float s30() const { return _values[0]; }
@@ -42,8 +44,8 @@ public:
     daisy::AnalogControl& Get(size_t index) { return _knobs[index]; }
 
 private:
-    std::array<daisy::AnalogControl, 8> _knobs;
-    std::array<float, 8> _values{};
+    std::array<daisy::AnalogControl, kNumKnobs> _knobs;
+    std::array<float, kNumKnobs> _values{};
 };
 
 } // namespace synthux

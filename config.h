@@ -11,6 +11,9 @@ static constexpr uint8_t kMidiChannel = 1;
 // Pads P00-P11: notes (C3..E4 in C major, then C2, D2)
 static constexpr uint8_t kNotes[12] = { 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 36, 38 };
 
+// Note On velocity for the lightest touch; full pressure gives 127
+static constexpr uint8_t kVelocityMin = 35;
+
 // Pads P00-P11: per-pad pressure on CC kPadPressureCCBase + pad
 static constexpr uint8_t kPadPressureCCBase = 30;
 

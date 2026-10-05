@@ -15,7 +15,9 @@ static DaisySeed      hw;
 static Touch          touch;
 static MidiUsbHandler midi;
 
-static constexpr uint32_t kLoopMs = 3;
+static constexpr uint32_t kLoopMs      = 3;
+static constexpr int      kSettleScans = 40;
+static constexpr uint32_t kDumpGapUs   = 250;
 
 static constexpr uint8_t kNoteOn     = 0x90 | (kMidiChannel - 1);
 static constexpr uint8_t kNoteOff    = 0x80 | (kMidiChannel - 1);
@@ -23,8 +25,8 @@ static constexpr uint8_t kPolyAT     = 0xA0 | (kMidiChannel - 1);
 static constexpr uint8_t kCC         = 0xB0 | (kMidiChannel - 1);
 static constexpr uint8_t kChannelAT  = 0xD0 | (kMidiChannel - 1);
 
-static uint8_t last_knob_val[8] = { 255, 255, 255, 255, 255, 255, 255, 255 };
-static uint8_t last_poly_p[12] = { 0 };
+static uint8_t last_knob_val[Knobs::kNumKnobs];
+static uint8_t last_poly_p[Pads::kNumPads] = { 0 };
 static uint8_t last_channel_p = 0;
 static int     last_switch_a = -1;
 static int     last_switch_b = -1;
@@ -39,9 +41,20 @@ static void SendMidi2(uint8_t status, uint8_t d1) {
     midi.SendMessage(msg, 2);
 }
 
+// 0.0..1.0 -> 0..127
+static uint8_t ToMidi(float x) {
+    if (x <= 0.0f) return 0;
+    if (x >= 1.0f) return 127;
+    return static_cast<uint8_t>(x * 127.0f + 0.5f);
+}
+
+// Down=0, Center=64, Up=127
+static uint8_t SwitchToMidi(int pos) {
+    return (pos == Switch3::POS_UP) ? 127 : (pos == Switch3::POS_CENTER) ? 64 : 0;
+}
+
 static uint8_t ReadKnobVal(size_t k) {
-    uint8_t val = static_cast<uint8_t>(touch.knobs()[k] * 127.0f + 0.5f);
-    return (val > 127) ? 127 : val;
+    return ToMidi(touch.knobs()[k]);
 }
 
 static void SendKnobCC(size_t k) {
@@ -51,30 +64,24 @@ static void SendKnobCC(size_t k) {
 }
 
 static void SendSwitchACC() {
-    int sw_a = touch.switches().A();
-    last_switch_a = sw_a;
-    uint8_t val = (sw_a == Switch3::POS_UP) ? 127 :
-                  (sw_a == Switch3::POS_CENTER) ? 64 : 0;
-    SendMidi3(kCC, kSwitchACC, val);
+    last_switch_a = touch.switches().A();
+    SendMidi3(kCC, kSwitchACC, SwitchToMidi(last_switch_a));
 }
 
 static void SendSwitchBCC() {
-    int sw_b = touch.switches().B();
-    last_switch_b = sw_b;
-    uint8_t val = (sw_b == Switch3::POS_UP) ? 127 :
-                  (sw_b == Switch3::POS_CENTER) ? 64 : 0;
-    SendMidi3(kCC, kSwitchBCC, val);
+    last_switch_b = touch.switches().B();
+    SendMidi3(kCC, kSwitchBCC, SwitchToMidi(last_switch_b));
 }
 
 static void DumpAllControls() {
-    for (size_t k = 0; k < 8; k++) {
+    for (size_t k = 0; k < Knobs::kNumKnobs; k++) {
         SendKnobCC(k);
-        System::DelayUs(250);
+        System::DelayUs(kDumpGapUs);
     }
     SendSwitchACC();
-    System::DelayUs(250);
+    System::DelayUs(kDumpGapUs);
     SendSwitchBCC();
-    System::DelayUs(250);
+    System::DelayUs(kDumpGapUs);
 }
 
 int main(void) {
@@ -89,15 +96,13 @@ int main(void) {
 
     // Note On & initial pressure when pad is touched
     touch.pads().SetOnTouch([](uint16_t pad) {
-        if (pad < 12) {
+        if (pad < Pads::kNumPads) {
             float p = touch.pads()[pad];
-            uint8_t vel = static_cast<uint8_t>(35.0f + p * 92.0f + 0.5f);
-            if (vel < 1) vel = 1;
+            uint8_t vel = static_cast<uint8_t>(kVelocityMin + p * (127 - kVelocityMin) + 0.5f);
             if (vel > 127) vel = 127;
             SendMidi3(kNoteOn, kNotes[pad], vel);
 
-            uint8_t press = static_cast<uint8_t>(p * 127.0f + 0.5f);
-            if (press > 127) press = 127;
+            uint8_t press = ToMidi(p);
             SendMidi3(kPolyAT, kNotes[pad], press);
             SendMidi3(kCC, kPadPressureCCBase + pad, press);
             last_poly_p[pad] = press;
@@ -106,7 +111,7 @@ int main(void) {
 
     // Note Off & clear pressure when pad is released
     touch.pads().SetOnRelease([](uint16_t pad) {
-        if (pad < 12) {
+        if (pad < Pads::kNumPads) {
             SendMidi3(kNoteOff, kNotes[pad], 0);
             SendMidi3(kPolyAT, kNotes[pad], 0);
             SendMidi3(kCC, kPadPressureCCBase + pad, 0);
@@ -115,7 +120,7 @@ int main(void) {
     });
 
     // Baseline capacitance settling delay
-    for (int i = 0; i < 40; i++) {
+    for (int i = 0; i < kSettleScans; i++) {
         touch.Process();
         System::Delay(kLoopMs);
     }
@@ -144,10 +149,9 @@ int main(void) {
 
         // Pad pressure: Poly Aftertouch, per-pad CC, Channel Aftertouch (max)
         uint8_t max_active_p = 0;
-        for (uint16_t p = 0; p < 12; p++) {
+        for (uint16_t p = 0; p < Pads::kNumPads; p++) {
             if (touch.pads().IsTouched(p)) {
-                uint8_t cur_p = static_cast<uint8_t>(touch.pads()[p] * 127.0f + 0.5f);
-                if (cur_p > 127) cur_p = 127;
+                uint8_t cur_p = ToMidi(touch.pads()[p]);
                 if (cur_p > max_active_p) {
                     max_active_p = cur_p;
                 }
@@ -165,7 +169,7 @@ int main(void) {
         }
 
         // Knobs and faders
-        for (size_t k = 0; k < 8; k++) {
+        for (size_t k = 0; k < Knobs::kNumKnobs; k++) {
             if (ReadKnobVal(k) != last_knob_val[k]) {
                 SendKnobCC(k);
             }

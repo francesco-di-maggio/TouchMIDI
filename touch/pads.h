@@ -12,24 +12,34 @@ namespace synthux {
  */
 class Pads {
 public:
+    static constexpr size_t kNumPads = 12;
+
+    static constexpr uint8_t kTouchThreshold   = 6;     // MPR121 touch threshold (counts)
+    static constexpr uint8_t kReleaseThreshold = 3;     // MPR121 release threshold (counts)
+    static constexpr uint8_t kReleaseScans     = 2;     // scans without touch before release
+    static constexpr int32_t kDeltaFloor       = 5;     // delta at or below this is zero pressure
+    static constexpr float   kMinDeltaRange    = 30.0f; // lower limit for max delta minus floor
+    static constexpr float   kSmoothing        = 0.40f; // pressure smoothing per scan (0-1, higher = faster)
+    static constexpr float   kPressureFloor    = 0.01f; // released pressure below this snaps to 0
+
     // Per-pad delta at full finger press, mapped to pressure 1.0
-    static constexpr std::array<float, 12> kDefaultMaxDeltas = {
-        375.0f, // P00
-        375.0f, // P01
-        375.0f, // P02
-        375.0f, // P03
-        460.0f, // P04: higher capacitance
-        375.0f, // P05
-        375.0f, // P06
-        375.0f, // P07
-        425.0f, // P08
-        425.0f, // P09
-        375.0f, // P10
-        375.0f  // P11
+    static constexpr std::array<float, kNumPads> kDefaultMaxDeltas = {
+        500.0f, // P00
+        500.0f, // P01
+        500.0f, // P02
+        500.0f, // P03
+        500.0f, // P04
+        500.0f, // P05
+        500.0f, // P06
+        500.0f, // P07
+        500.0f, // P08
+        500.0f, // P09
+        500.0f, // P10
+        500.0f  // P11
     };
 
     Pads() : _state{0}, _oor_state{0}, _exponential{true} {
-        for (size_t i = 0; i < 12; i++) {
+        for (size_t i = 0; i < kNumPads; i++) {
             _pressure[i] = 0.0f;
             _debounce_cnt[i] = 0;
             _pad_max_delta[i] = kDefaultMaxDeltas[i];
@@ -45,8 +55,8 @@ public:
     bool IsCurveExponential() const { return _exponential; }
 
     // Max delta tuning
-    void SetMaxDelta(uint16_t pad, float max_delta) { if (pad < 12) _pad_max_delta[pad] = max_delta; }
-    float MaxDelta(uint16_t pad) const { return (pad < 12) ? _pad_max_delta[pad] : 0.0f; }
+    void SetMaxDelta(uint16_t pad, float max_delta) { if (pad < kNumPads) _pad_max_delta[pad] = max_delta; }
+    float MaxDelta(uint16_t pad) const { return (pad < kNumPads) ? _pad_max_delta[pad] : 0.0f; }
 
     // Event callbacks
     void SetOnTouch(std::function<void(uint16_t pad)> cb) { _on_touch = cb; }
@@ -59,9 +69,9 @@ public:
     uint16_t OutOfRange() const { return _oor_state; }
 
     // Continuous pressure sensing (0.0 .. 1.0)
-    float Pressure(uint16_t pad) const { return (pad < 12) ? _pressure[pad] : 0.0f; }
+    float Pressure(uint16_t pad) const { return (pad < kNumPads) ? _pressure[pad] : 0.0f; }
     float operator[](size_t pad) const { return Pressure(pad); }
-    const std::array<float, 12>& Pressures() const { return _pressure; }
+    const std::array<float, kNumPads>& Pressures() const { return _pressure; }
 
 private:
     void WriteRegister(uint8_t reg, uint8_t val);
@@ -74,9 +84,9 @@ private:
     uint16_t _oor_state;
     bool _exponential;
 
-    std::array<float, 12> _pad_max_delta{};
-    std::array<float, 12> _pressure{};
-    std::array<uint8_t, 12> _debounce_cnt{};
+    std::array<float, kNumPads> _pad_max_delta{};
+    std::array<float, kNumPads> _pressure{};
+    std::array<uint8_t, kNumPads> _debounce_cnt{};
 
     std::function<void(uint16_t pad)> _on_touch;
     std::function<void(uint16_t pad)> _on_release;

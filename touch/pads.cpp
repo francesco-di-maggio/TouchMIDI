@@ -34,10 +34,9 @@ void Pads::Init(DaisySeed& hw) {
     WriteRegister(0x5E, 0x00);
 
     // 4. Touch & Release Thresholds for all 12 electrodes
-    // Touch threshold = 6, release threshold = 3
-    for (uint8_t i = 0; i < 12; i++) {
-        WriteRegister(0x41 + i * 2, 6);
-        WriteRegister(0x42 + i * 2, 3);
+    for (uint8_t i = 0; i < kNumPads; i++) {
+        WriteRegister(0x41 + i * 2, kTouchThreshold);
+        WriteRegister(0x42 + i * 2, kReleaseThreshold);
     }
 
     // 5. Baseline Filter Configuration (NXP AN3891)
@@ -116,13 +115,13 @@ void Pads::Process() {
     uint16_t raw_state = (static_cast<uint16_t>(raw[1] & 0x0F) << 8) | raw[0];
     _oor_state = (static_cast<uint16_t>(raw[3] & 0x0F) << 8) | raw[2];
 
-    for (uint16_t i = 0; i < 12; i++) {
+    for (uint16_t i = 0; i < kNumPads; i++) {
         uint16_t mask = 1 << i;
         bool raw_touched = (raw_state & mask) != 0;
         bool was_touched = (_state & mask) != 0;
         bool state_changed = false;
 
-        // Touch registers immediately, release after 2 scans
+        // Touch registers immediately, release after kReleaseScans scans
         if (raw_touched != was_touched) {
             if (raw_touched) {
                 _state |= mask;
@@ -130,7 +129,7 @@ void Pads::Process() {
                 _debounce_cnt[i] = 0;
             } else {
                 _debounce_cnt[i]++;
-                if (_debounce_cnt[i] >= 2) {
+                if (_debounce_cnt[i] >= kReleaseScans) {
                     _debounce_cnt[i] = 0;
                     _state &= ~mask;
                     state_changed = true;
@@ -153,13 +152,13 @@ void Pads::Process() {
         bool is_touched = (_state & mask) != 0;
 
         if (is_touched) {
-            // Pressure: delta above 5, normalized by the pad's max delta
+            // Pressure: delta above kDeltaFloor, normalized by the pad's max delta
             float target_p = 0.0f;
-            if (delta >= 6) {
-                float effective_max = _pad_max_delta[i] - 5.0f;
-                if (effective_max < 30.0f) effective_max = 30.0f;
+            if (delta > kDeltaFloor) {
+                float effective_max = _pad_max_delta[i] - static_cast<float>(kDeltaFloor);
+                if (effective_max < kMinDeltaRange) effective_max = kMinDeltaRange;
 
-                float norm = static_cast<float>(delta - 5) / effective_max;
+                float norm = static_cast<float>(delta - kDeltaFloor) / effective_max;
                 if (norm > 1.0f) norm = 1.0f;
                 if (norm < 0.0f) norm = 0.0f;
 
@@ -172,12 +171,12 @@ void Pads::Process() {
                 if (_on_touch) _on_touch(i);
             } else {
                 // While held: smoothed
-                _pressure[i] += (target_p - _pressure[i]) * 0.40f;
+                _pressure[i] += (target_p - _pressure[i]) * kSmoothing;
             }
         } else {
             // Released
-            _pressure[i] += (0.0f - _pressure[i]) * 0.40f;
-            if (_pressure[i] < 0.01f) _pressure[i] = 0.0f;
+            _pressure[i] += (0.0f - _pressure[i]) * kSmoothing;
+            if (_pressure[i] < kPressureFloor) _pressure[i] = 0.0f;
 
             if (state_changed && !raw_touched) {
                 _pressure[i] = 0.0f;
