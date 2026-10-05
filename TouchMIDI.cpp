@@ -94,11 +94,12 @@ int main(void) {
 
     touch.Init(hw, 1000.0f / kLoopMs);
 
-    // Note On & initial pressure when pad is touched
+    // Note On (strike velocity) & initial pressure when pad is touched
     touch.pads().SetOnTouch([](uint16_t pad) {
         if (pad < Pads::kNumPads) {
             float p = touch.pads()[pad];
-            uint8_t vel = static_cast<uint8_t>(kVelocityMin + p * (127 - kVelocityMin) + 0.5f);
+            float v = touch.pads().Velocity(pad);
+            uint8_t vel = static_cast<uint8_t>(kVelocityMin + v * (127 - kVelocityMin) + 0.5f);
             if (vel > 127) vel = 127;
             SendMidi3(kNoteOn, kNotes[pad], vel);
 

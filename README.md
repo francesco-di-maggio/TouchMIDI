@@ -27,8 +27,8 @@ Default map. Device name, MIDI channel, notes and CC numbers are set in `config.
 
 | Control | Direction | MIDI | Notes |
 |---|---|---|---|
-| Pads P00-P09 | out | Note 48-64 | C major, velocity from initial touch pressure |
-| Pads P10, P11 | out | Note 36, 38 | Velocity from initial touch pressure |
+| Pads P00-P09 | out | Note 48-64 | C major, velocity from strike peak |
+| Pads P10, P11 | out | Note 36, 38 | Velocity from strike peak |
 | Pads P00-P11 | out | Poly Aftertouch | Continuous pressure while held |
 | Pads P00-P11 | out | CC30-41 | Per-pad pressure (P00 -> CC30 ... P11 -> CC41) |
 | All pads | out | Channel Aftertouch | Max pressure across all held pads |

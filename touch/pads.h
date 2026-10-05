@@ -22,6 +22,13 @@ public:
     static constexpr float   kSmoothing        = 0.40f; // pressure smoothing per scan (0-1, higher = faster)
     static constexpr float   kPressureFloor    = 0.01f; // released pressure below this snaps to 0
 
+    // Velocity: peak delta over the first scans of a touch
+    static constexpr uint8_t kStrikeScans       = 4;     // max scans to wait for the peak
+    static constexpr int32_t kStrikePeakMin     = 30;    // peak delta required for early exit
+    static constexpr int32_t kStrikePeakDrop    = 12;    // drop below peak that ends the window early
+    static constexpr float   kVelocityFloor     = 0.03f; // lowest velocity reported
+    static constexpr uint8_t kReleaseLockScans  = 3;     // scans after release before a new touch registers
+
     // Per-pad delta at full finger press, mapped to pressure 1.0
     static constexpr std::array<float, kNumPads> kDefaultMaxDeltas = {
         500.0f, // P00
@@ -41,7 +48,11 @@ public:
     Pads() : _state{0}, _oor_state{0}, _exponential{true} {
         for (size_t i = 0; i < kNumPads; i++) {
             _pressure[i] = 0.0f;
+            _velocity[i] = 0.0f;
             _debounce_cnt[i] = 0;
+            _strike_scans[i] = 0;
+            _strike_peak[i] = 0;
+            _release_lock[i] = 0;
             _pad_max_delta[i] = kDefaultMaxDeltas[i];
         }
     }
@@ -73,9 +84,14 @@ public:
     float operator[](size_t pad) const { return Pressure(pad); }
     const std::array<float, kNumPads>& Pressures() const { return _pressure; }
 
+    // Strike velocity of the last touch (kVelocityFloor .. 1.0), valid from the touch callback on
+    float Velocity(uint16_t pad) const { return (pad < kNumPads) ? _velocity[pad] : 0.0f; }
+
 private:
     void WriteRegister(uint8_t reg, uint8_t val);
     bool ReadBurst(uint8_t start_reg, uint8_t* buffer, uint16_t size);
+    float Normalize(uint16_t pad, int32_t delta) const;
+    void FireTouch(uint16_t pad, float pressure);
 
     static constexpr uint8_t kMpr121Addr = 0x5A;
 
@@ -86,7 +102,11 @@ private:
 
     std::array<float, kNumPads> _pad_max_delta{};
     std::array<float, kNumPads> _pressure{};
+    std::array<float, kNumPads> _velocity{};
     std::array<uint8_t, kNumPads> _debounce_cnt{};
+    std::array<uint8_t, kNumPads> _strike_scans{};
+    std::array<int32_t, kNumPads> _strike_peak{};
+    std::array<uint8_t, kNumPads> _release_lock{};
 
     std::function<void(uint16_t pad)> _on_touch;
     std::function<void(uint16_t pad)> _on_release;

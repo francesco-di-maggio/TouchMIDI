@@ -61,13 +61,13 @@ void Pads::Init(DaisySeed& hw) {
     WriteRegister(0x5B, 0x11);
 
     // 6. Analog Front-End (AFE) Configuration (NXP AN3889 / AN3890)
-    // CONFIG1 (0x5C): FFI = 01 (10 samples), CDC = 16 uA
-    // (0b01 << 6) | 0x10 = 0x50
-    WriteRegister(0x5C, 0x50);
+    // CONFIG1 (0x5C): FFI = 11 (34 samples), CDC = 16 uA
+    // (0b11 << 6) | 0x10 = 0xD0
+    WriteRegister(0x5C, 0xD0);
 
-    // CONFIG2 (0x5D): CDT = 1uS (0b010 in bits 7:5), SFI = 4 (0b00 in bits 4:3), ESI = 2ms (0b001 in bits 2:0)
-    // (0b010 << 5) | (0b00 << 3) | 0b001 = 0x41
-    WriteRegister(0x5D, 0x41);
+    // CONFIG2 (0x5D): CDT = 1uS (0b010 in bits 7:5), SFI = 10 (0b10 in bits 4:3), ESI = 2ms (0b001 in bits 2:0)
+    // (0b010 << 5) | (0b10 << 3) | 0b001 = 0x51
+    WriteRegister(0x5D, 0x51);
 
     // 7. Auto-Configuration Registers (NXP AN3889)
     // For Vdd = 3.3V:
@@ -79,9 +79,9 @@ void Pads::Init(DaisySeed& hw) {
     WriteRegister(0x7F, 180); // TL
 
     // AUTOCONFIG0 (0x7B):
-    // FFI = 01 (10 samples), RETRY = 00, BVA = 10 (target level baseline), ACE = 1, ARE = 1
-    // (0b01 << 6) | (0b00 << 4) | (0b10 << 2) | 0b11 = 0x4B
-    WriteRegister(0x7B, 0x4B);
+    // FFI = 11 (34 samples, matches CONFIG1), RETRY = 00, BVA = 10 (target level baseline), ACE = 1, ARE = 1
+    // (0b11 << 6) | (0b00 << 4) | (0b10 << 2) | 0b11 = 0xCB
+    WriteRegister(0x7B, 0xCB);
     WriteRegister(0x7C, 0x00); // AUTOCONFIG1 (search both CDC and CDT)
 
     // 8. Start Run Mode with all 12 electrodes enabled:
@@ -102,6 +102,43 @@ void Pads::Recalibrate() {
     // Re-enter Run Mode with Autoconfig enabled
     WriteRegister(0x5E, 0x8C);
     System::Delay(80);
+
+    // Release held pads and clear per-pad state
+    for (uint16_t i = 0; i < kNumPads; i++) {
+        if (IsTouched(i) && _on_release) _on_release(i);
+        _pressure[i] = 0.0f;
+        _velocity[i] = 0.0f;
+        _debounce_cnt[i] = 0;
+        _strike_scans[i] = 0;
+        _strike_peak[i] = 0;
+        _release_lock[i] = 0;
+    }
+    _state = 0;
+}
+
+// Delta above kDeltaFloor, normalized by the pad's max delta (0.0 .. 1.0)
+float Pads::Normalize(uint16_t pad, int32_t delta) const {
+    float effective_max = _pad_max_delta[pad] - static_cast<float>(kDeltaFloor);
+    if (effective_max < kMinDeltaRange) effective_max = kMinDeltaRange;
+
+    float norm = static_cast<float>(delta - kDeltaFloor) / effective_max;
+    if (norm > 1.0f) norm = 1.0f;
+    if (norm < 0.0f) norm = 0.0f;
+    return norm;
+}
+
+// Close the strike window: set velocity from the peak delta, then report the touch
+void Pads::FireTouch(uint16_t pad, float pressure) {
+    _strike_scans[pad] = 0;
+
+    float norm = Normalize(pad, _strike_peak[pad]);
+    float vel = 0.35f * norm + 0.65f * sqrtf(norm);
+    if (vel < kVelocityFloor) vel = kVelocityFloor;
+    if (vel > 1.0f) vel = 1.0f;
+    _velocity[pad] = vel;
+    _pressure[pad] = pressure;
+
+    if (_on_touch) _on_touch(pad);
 }
 
 void Pads::Process() {
@@ -121,12 +158,31 @@ void Pads::Process() {
         bool was_touched = (_state & mask) != 0;
         bool state_changed = false;
 
-        // Touch registers immediately, release after kReleaseScans scans
+        // 10-bit Filtered Capacitance from register 0x04 + i*2
+        uint16_t filt = (static_cast<uint16_t>(raw[4 + i * 2 + 1] & 0x03) << 8) | raw[4 + i * 2];
+
+        // 10-bit Baseline Capacitance from register 0x1E + i
+        uint16_t base = static_cast<uint16_t>(raw[0x1E + i]) << 2;
+
+        // Delta: positive when touched (capacitance increases, ADC voltage drops below baseline)
+        int32_t delta = static_cast<int32_t>(base) - static_cast<int32_t>(filt);
+        if (delta < 0) delta = 0;
+
+        // Anti-stuck: delta below the release threshold counts as released, whatever the touch bit says
+        if (delta < kReleaseThreshold) raw_touched = false;
+
+        if (_release_lock[i] > 0) _release_lock[i]--;
+
+        // Touch registers immediately (unless locked after a release), release after kReleaseScans scans
         if (raw_touched != was_touched) {
             if (raw_touched) {
-                _state |= mask;
-                state_changed = true;
-                _debounce_cnt[i] = 0;
+                if (_release_lock[i] == 0) {
+                    _state |= mask;
+                    state_changed = true;
+                    _debounce_cnt[i] = 0;
+                    _strike_scans[i] = kStrikeScans;
+                    _strike_peak[i] = delta;
+                }
             } else {
                 _debounce_cnt[i]++;
                 if (_debounce_cnt[i] >= kReleaseScans) {
@@ -139,50 +195,42 @@ void Pads::Process() {
             _debounce_cnt[i] = 0;
         }
 
-        // 10-bit Filtered Capacitance from register 0x04 + i*2
-        uint16_t filt = (static_cast<uint16_t>(raw[4 + i * 2 + 1] & 0x03) << 8) | raw[4 + i * 2];
-
-        // 10-bit Baseline Capacitance from register 0x1E + i
-        uint16_t base = static_cast<uint16_t>(raw[0x1E + i]) << 2;
-
-        // Delta: positive when touched (capacitance increases, ADC voltage drops below baseline)
-        int32_t delta = static_cast<int32_t>(base) - static_cast<int32_t>(filt);
-        if (delta < 0) delta = 0;
-
         bool is_touched = (_state & mask) != 0;
 
         if (is_touched) {
-            // Pressure: delta above kDeltaFloor, normalized by the pad's max delta
             float target_p = 0.0f;
             if (delta > kDeltaFloor) {
-                float effective_max = _pad_max_delta[i] - static_cast<float>(kDeltaFloor);
-                if (effective_max < kMinDeltaRange) effective_max = kMinDeltaRange;
-
-                float norm = static_cast<float>(delta - kDeltaFloor) / effective_max;
-                if (norm > 1.0f) norm = 1.0f;
-                if (norm < 0.0f) norm = 0.0f;
-
+                float norm = Normalize(i, delta);
                 target_p = _exponential ? (norm * norm) : norm;
             }
 
-            if (state_changed && raw_touched) {
-                // First scan of a touch: set directly
-                _pressure[i] = target_p;
-                if (_on_touch) _on_touch(i);
+            if (_strike_scans[i] > 0) {
+                // Strike window: track the peak, report the touch when it ends or the peak has passed
+                if (delta > _strike_peak[i]) _strike_peak[i] = delta;
+                _strike_scans[i]--;
+
+                bool peak_passed = _strike_peak[i] > kStrikePeakMin && delta < _strike_peak[i] - kStrikePeakDrop;
+                if (_strike_scans[i] == 0 || peak_passed) FireTouch(i, target_p);
             } else {
                 // While held: smoothed
                 _pressure[i] += (target_p - _pressure[i]) * kSmoothing;
             }
         } else {
+            // Released inside the strike window: report the touch before the release
+            if (_strike_scans[i] > 0) {
+                _strike_scans[i] = 0;
+                if (_strike_peak[i] > kDeltaFloor && _release_lock[i] == 0) FireTouch(i, 0.0f);
+            }
+
             // Released
             _pressure[i] += (0.0f - _pressure[i]) * kSmoothing;
             if (_pressure[i] < kPressureFloor) _pressure[i] = 0.0f;
 
             if (state_changed && !raw_touched) {
                 _pressure[i] = 0.0f;
+                _release_lock[i] = kReleaseLockScans;
                 if (_on_release) _on_release(i);
             }
         }
     }
 }
-
