@@ -2,7 +2,7 @@
 
 <img src="TouchMIDI.png" width="400" alt="TouchMIDI Max template: pads, knobs, faders, switches, combined pressure and LED, laid out like the Simple Touch panel"/>
 
-The patch shows every control in the Simple Touch layout.
+The patch shows every control in the Simple Touch layout. Each control has an editable label, set to its panel name by default.
 
 ## Connection
 
