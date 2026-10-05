@@ -18,7 +18,7 @@ Names follow the labels printed on the Simple Touch panel (see `touch.jpeg`). Us
 |---|---|---|
 | `P00` ... `P11` | Pads | Note velocity, 0 on release |
 | `P00P` ... `P11P` | Pads | Pressure 0-127 (Poly Aftertouch) |
-| `TOUCH` | Pads P00, P02-P09 | Combined pressure 0-127 |
+| `PRESS` | Pads P00, P02-P09 | Combined pressure 0-127 |
 | `ACTIVE` | Pads P00, P02-P09 | 1 while any pressure is applied |
 | `S30` ... `S35` | Knobs | 0-127 |
 | `S36`, `S37` | Left, right fader | 0-127 |

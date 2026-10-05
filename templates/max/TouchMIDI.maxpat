@@ -277,7 +277,7 @@
                     "presentation": 1,
                     "presentation_rect": [ 143.61711088398047, 213.0, 73.0, 21.5 ],
                     "rounded": 0.0,
-                    "text": "PRESS",
+                    "text": "TOUCH",
                     "textjustification": 1
                 }
             },
@@ -961,7 +961,7 @@
                     "numinlets": 1,
                     "numoutlets": 0,
                     "patching_rect": [ 1084.0, 757.9285985827446, 60.0, 22.0 ],
-                    "text": "s TOUCH"
+                    "text": "s PRESS"
                 }
             },
             {
