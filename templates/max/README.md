@@ -2,7 +2,7 @@
 
 <img src="TouchMIDI.png" width="400" alt="TouchMIDI Max template: pads, knobs, faders, switches, combined pressure and LED, laid out like the Simple Touch panel"/>
 
-The patch mirrors the Simple Touch panel and shows every control live.
+The patch shows every control in the Simple Touch layout.
 
 ## Connection
 
