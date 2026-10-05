@@ -80,7 +80,6 @@ static void DumpAllControls() {
 int main(void) {
     hw.Init(true);
 
-    // Initialize USB MIDI transport
     MidiUsbHandler::Config midi_cfg;
     midi_cfg.transport_config.periph = MidiUsbTransport::Config::INTERNAL;
     midi.Init(midi_cfg);
@@ -127,26 +126,23 @@ int main(void) {
     while (1) {
         touch.Process();
 
-        // 0. Process incoming MIDI commands from host
+        // Host -> device
         midi.Listen();
         while (midi.HasEvents()) {
             MidiEvent ev = midi.PopEvent();
             if (ev.type == ControlChange) {
                 ControlChangeEvent cc = ev.AsControlChange();
                 if (cc.control_number == kLedCC) {
-                    // LED control (>=64 = on)
                     hw.SetLed(cc.value >= 64);
                 } else if (cc.control_number == kRecalibrateCC) {
-                    // Re-zero / re-calibrate capacitive touch baseline
                     touch.pads().Recalibrate();
                 } else if (cc.control_number == kDumpCC) {
-                    // Host requested full control dump
                     DumpAllControls();
                 }
             }
         }
 
-        // 1. Continuous Pad Pressure: Poly Aftertouch + per-pad CC + Channel Aftertouch
+        // Pad pressure: Poly Aftertouch, per-pad CC, Channel Aftertouch (max)
         uint8_t max_active_p = 0;
         for (uint16_t p = 0; p < 12; p++) {
             if (touch.pads().IsTouched(p)) {
@@ -168,14 +164,14 @@ int main(void) {
             SendMidi2(kChannelAT, last_channel_p);
         }
 
-        // 2. Control Change (CC) on knob & fader change
+        // Knobs and faders
         for (size_t k = 0; k < 8; k++) {
             if (ReadKnobVal(k) != last_knob_val[k]) {
                 SendKnobCC(k);
             }
         }
 
-        // 3. Toggle switches
+        // Switches
         if (touch.switches().A() != last_switch_a) {
             SendSwitchACC();
         }

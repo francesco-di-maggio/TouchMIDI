@@ -40,7 +40,7 @@ public:
     void Process();
     void Recalibrate();
 
-    // Response curve: true = quadratic (natural finger pulp resistance), false = linear
+    // Response curve: true = quadratic, false = linear
     void SetCurveExponential(bool exp) { _exponential = exp; }
     bool IsCurveExponential() const { return _exponential; }
 

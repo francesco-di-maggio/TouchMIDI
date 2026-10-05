@@ -34,21 +34,20 @@ void Pads::Init(DaisySeed& hw) {
     WriteRegister(0x5E, 0x00);
 
     // 4. Touch & Release Thresholds for all 12 electrodes
-    // Touch threshold = 6 counts: registers light contact
-    // Release threshold = 3 counts: hysteresis against release chatter
+    // Touch threshold = 6, release threshold = 3
     for (uint8_t i = 0; i < 12; i++) {
         WriteRegister(0x41 + i * 2, 6);
         WriteRegister(0x42 + i * 2, 3);
     }
 
     // 5. Baseline Filter Configuration (NXP AN3891)
-    // Rising baseline filter (quick recovery when finger releases)
+    // Rising baseline filter (fast)
     WriteRegister(0x2B, 0x01); // MHDR
     WriteRegister(0x2C, 0x01); // NHDR
     WriteRegister(0x2D, 0x0E); // NCLR
     WriteRegister(0x2E, 0x00); // FDLR
 
-    // Falling baseline filter (slow adaptation prevents finger press from being absorbed)
+    // Falling baseline filter (slow, so a press is not absorbed into the baseline)
     WriteRegister(0x2F, 0x01); // MHDF
     WriteRegister(0x30, 0x01); // NHDF
     WriteRegister(0x31, 0x10); // NCLF (16 consecutive samples)
@@ -59,11 +58,11 @@ void Pads::Init(DaisySeed& hw) {
     WriteRegister(0x34, 0x00); // NCLT
     WriteRegister(0x35, 0x00); // FDLT
 
-    // Debounce: 1 consecutive matching sample to confirm touch & release
+    // Debounce: DR = 1, DT = 1
     WriteRegister(0x5B, 0x11);
 
     // 6. Analog Front-End (AFE) Configuration (NXP AN3889 / AN3890)
-    // CONFIG1 (0x5C): FFI = 01 (10 filter iterations for noise immunity), CDC = 16uA seed
+    // CONFIG1 (0x5C): FFI = 01 (10 samples), CDC = 16 uA
     // (0b01 << 6) | 0x10 = 0x50
     WriteRegister(0x5C, 0x50);
 
@@ -92,7 +91,7 @@ void Pads::Init(DaisySeed& hw) {
     // (0b10 << 6) | 12 = 0x8C
     WriteRegister(0x5E, 0x8C);
 
-    // 9. Allow hardware autoconfiguration engine to search CDC/CDT and settle
+    // 9. Wait for auto-configuration
     System::Delay(80);
 }
 
@@ -107,10 +106,10 @@ void Pads::Recalibrate() {
 }
 
 void Pads::Process() {
-    // Read entire 42-byte status and data block in ONE single burst transfer
+    // Read registers 0x00-0x29 in one transfer
     uint8_t raw[42];
     if (!ReadBurst(0x00, raw, 42)) {
-        // I2C bus error or chip not responding; preserve previous state safely
+        // I2C error: keep previous state
         return;
     }
 
@@ -123,8 +122,7 @@ void Pads::Process() {
         bool was_touched = (_state & mask) != 0;
         bool state_changed = false;
 
-        // Instant touch response (zero latency for feather-light response)
-        // 2-scan debounce on release to prevent lift-off chatter
+        // Touch registers immediately, release after 2 scans
         if (raw_touched != was_touched) {
             if (raw_touched) {
                 _state |= mask;
@@ -155,8 +153,7 @@ void Pads::Process() {
         bool is_touched = (_state & mask) != 0;
 
         if (is_touched) {
-            // Continuous pressure scaling:
-            // Delta starts around 6 for a soft touch and scales up to calibrated max delta
+            // Pressure: delta above 5, normalized by the pad's max delta
             float target_p = 0.0f;
             if (delta >= 6) {
                 float effective_max = _pad_max_delta[i] - 5.0f;
@@ -170,11 +167,11 @@ void Pads::Process() {
             }
 
             if (state_changed && raw_touched) {
-                // Initial strike: instant assignment for zero latency
+                // First scan of a touch: set directly
                 _pressure[i] = target_p;
                 if (_on_touch) _on_touch(i);
             } else {
-                // Subsequent continuous pressure: smooth tracking
+                // While held: smoothed
                 _pressure[i] += (target_p - _pressure[i]) * 0.40f;
             }
         } else {
