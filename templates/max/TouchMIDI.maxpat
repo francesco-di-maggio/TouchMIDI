@@ -277,7 +277,7 @@
                     "presentation": 1,
                     "presentation_rect": [ 143.61711088398047, 213.0, 73.0, 21.5 ],
                     "rounded": 0.0,
-                    "text": "TOUCH",
+                    "text": "PRESS",
                     "textjustification": 1
                 }
             },
@@ -2416,7 +2416,7 @@
                     "parameter_enable": 1,
                     "patching_rect": [ 87.0, 566.0, 22.0, 22.0 ],
                     "presentation": 1,
-                    "presentation_rect": [ 174.7058823529412, 324.0, 10.588235294117647, 77.03921568627449 ],
+                    "presentation_rect": [ 174.7058823529412, 324.73552412167214, 10.588235294117647, 77.03921568627449 ],
                     "saved_attribute_attributes": {
                         "activebgcolor": {
                             "expression": ""
