@@ -25,6 +25,7 @@ static constexpr uint8_t kSwitchACC = 80;
 static constexpr uint8_t kSwitchBCC = 81;
 
 // Host -> device
+// CC 120-127 are Channel Mode messages: libDaisy's parser never reports them as ControlChange
 static constexpr uint8_t kLedCC         = 111;
 static constexpr uint8_t kRecalibrateCC = 112;
 static constexpr uint8_t kDumpCC        = 113;
